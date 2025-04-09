@@ -1,95 +1,84 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::fs::File;
 use std::io::Write;
 use std::thread;
 use std::time::Duration;
 use anyhow::Result;
 
-trait Pricing {
-    fn fetch_price(&self) -> Result<f64>;
-    fn save_price(&self, price: f64) -> Result<()>;
+#[derive(Debug)]
+enum Asset {
+    Bitcoin,
+    Ethereum,
+    SP500,
 }
 
-#[derive(Debug)]
-struct Bitcoin;
-
-impl Pricing for Bitcoin {
+impl Asset {
     fn fetch_price(&self) -> Result<f64> {
         #[derive(Deserialize)]
-        struct ApiResponse {
+        struct Coin {
+            usd: f64,
+        }
+
+        #[derive(Deserialize)]
+        struct BitcoinResponse {
             bitcoin: Coin,
         }
 
         #[derive(Deserialize)]
-        struct Coin {
-            usd: f64,
-        }
-
-        let url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd";
-        let response = ureq::get(url).call()?.into_string()?;
-        let parsed: ApiResponse = serde_json::from_str(&response)?;
-        Ok(parsed.bitcoin.usd)
-    }
-
-    fn save_price(&self, price: f64) -> Result<()> {
-        let mut file = File::create("bitcoin_price.txt")?;
-        writeln!(file, "Bitcoin price: ${}", price)?;
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-struct Ethereum;
-
-impl Pricing for Ethereum {
-    fn fetch_price(&self) -> Result<f64> {
-        #[derive(Deserialize)]
-        struct ApiResponse {
+        struct EthereumResponse {
             ethereum: Coin,
         }
 
-        #[derive(Deserialize)]
-        struct Coin {
-            usd: f64,
+        match self {
+            Asset::Bitcoin => {
+                let url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd";
+                let response = ureq::get(url).call()?.into_string()?;
+                let parsed: BitcoinResponse = serde_json::from_str(&response)?;
+                Ok(parsed.bitcoin.usd)
+            }
+            Asset::Ethereum => {
+                let url = "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd";
+                let response = ureq::get(url).call()?.into_string()?;
+                let parsed: EthereumResponse = serde_json::from_str(&response)?;
+                Ok(parsed.ethereum.usd)
+            }
+            Asset::SP500 => {
+                // Simulated or fixed value for SP500
+                Ok(5000.00)
+            }
         }
-
-        let url = "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd";
-        let response = ureq::get(url).call()?.into_string()?;
-        let parsed: ApiResponse = serde_json::from_str(&response)?;
-        Ok(parsed.ethereum.usd)
     }
 
     fn save_price(&self, price: f64) -> Result<()> {
-        let mut file = File::create("ethereum_price.txt")?;
-        writeln!(file, "Ethereum price: ${}", price)?;
-        Ok(())
-    }
-}
+        let filename = match self {
+            Asset::Bitcoin => "bitcoin_price.txt",
+            Asset::Ethereum => "ethereum_price.txt",
+            Asset::SP500 => "sp500_price.txt",
+        };
 
-#[derive(Debug)]
-struct SP500;
+        let label = match self {
+            Asset::Bitcoin => "Bitcoin price",
+            Asset::Ethereum => "Ethereum price",
+            Asset::SP500 => "S&P 500 index",
+        };
 
-impl Pricing for SP500 {
-    fn fetch_price(&self) -> Result<f64> {
-        Ok(5000.00)
-    }
-
-    fn save_price(&self, price: f64) -> Result<()> {
-        let mut file = File::create("sp500_price.txt")?;
-        writeln!(file, "S&P 500 index: {}", price)?;
+        let mut file = File::create(filename)?;
+        writeln!(file, "{}: ${}", label, price)?;
         Ok(())
     }
 }
 
 fn main() -> Result<()> {
-    let bitcoin = Bitcoin;
-    let ethereum = Ethereum;
-    let sp500 = SP500;
+    let assets = vec![
+        Asset::Bitcoin,
+        Asset::Ethereum,
+        Asset::SP500,
+    ];
 
     loop {
-        println!("Fetching prices..");
+        println!("Fetching prices...");
 
-        for asset in [&bitcoin as &dyn Pricing, &ethereum, &sp500] {
+        for asset in &assets {
             match asset.fetch_price() {
                 Ok(price) => {
                     println!("Fetched price: ${}", price);
@@ -101,7 +90,7 @@ fn main() -> Result<()> {
             }
         }
 
-        println!("Sleeping for 10 seconds..\n");
+        println!("Sleeping for 10 seconds...\n");
         thread::sleep(Duration::from_secs(10));
     }
-    
+}
